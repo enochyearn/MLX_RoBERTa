@@ -41,6 +41,11 @@ model_configs = {
     "roberta-base": ModelConfig(),
 }
 
+model_types = {
+    "deepset/roberta-base-squad2": "qa",
+    "roberta-base": "base",
+}
+
 class RobertaEmbeddings(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -248,14 +253,29 @@ class RobertaEncoder(nn.Module):
         return hidden_states
         
 
+class RobertaPooler(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.activation_fn = mx.tanh
+    def __call__(self, hidden_states):
+        # We "pool" the model by simply taking the hidden state corresponding
+        # to the first token.
+        first_token_tensor = hidden_states[:, 0]
+        pooled_output = self.dense(first_token_tensor)
+        pooled_output = self.activation_fn(pooled_output)
+        return pooled_output
+
 class RobertaModel(nn.Module):
     """
     RoBERTa: A Robustly Optimized BERT Pretraining
     """
-    def __init__(self, config):
+    def __init__(self, config, add_pooling_layer=True):
         super().__init__()
         self.embeddings = RobertaEmbeddings(config)
         self.encoder = RobertaEncoder(config)
+
+        self.pooler = RobertaPooler(config) if add_pooling_layer else None
 
         # To Do: Initialize weights for pre-training
     
@@ -282,13 +302,15 @@ class RobertaModel(nn.Module):
         )
         encoder_outputs = self.encoder(embedding_output, attention_mask)
         sequence_output = encoder_outputs
+        pooled_output = self.pooler(sequence_output) if self.pooler is not None else None
 
         roberta_out = OrderedDict()
         roberta_out["last_hidden_state"] = sequence_output
-        # bert_out["past_key_values"] = encoder_outputs.past_key_values
-        # bert_out["hidden_states"] = encoder_outputs.hidden_states
-        # bert_out["attentions"] = encoder_outputs.attentions
-        # bert_out["cross_attentions"] = encoder_outputs.cross_attentions
+        roberta_out["pooler_output"] = pooled_output
+        # roberta_out["past_key_values"] = encoder_outputs.past_key_values
+        # roberta_out["hidden_states"] = encoder_outputs.hidden_states
+        # roberta_out["attentions"] = encoder_outputs.attentions
+        # roberta_out["cross_attentions"] = encoder_outputs.cross_attentions
         return roberta_out
 
 
@@ -299,7 +321,7 @@ class RobertaForQuestionAnswering(nn.Module):
         self.num_lables = config.num_labels
         self.hidden_size = config.hidden_size
         
-        self.roberta = RobertaModel(config)
+        self.roberta = RobertaModel(config, add_pooling_layer=False)
         self.qa_outputs = nn.Linear(self.hidden_size, self.num_lables)
         # To Do: Init weights and apply final processing
         
@@ -348,6 +370,18 @@ def create_position_ids_from_input_ids(input_ids, padding_idx):
     incremental_indices = (np.cumsum(mask, axis=1)).astype(np.int64) * mask
     return mx.array(incremental_indices).astype(mx.int64) + padding_idx
 
+def load_base_model(model_name, weights_path):
+    weights = mx.load(weights_path)
+    weights = tree_unflatten(list(weights.items()))
+
+    # Create and load the model with weights
+    model = RobertaModel(model_configs[model_name])
+    model.update(weights)
+
+    tokenizer = RobertaTokenizer.from_pretrained(model_name)
+
+    return model, tokenizer
+
 
 def load_qa_model(model_name, weights_path):
     weights = mx.load(weights_path)
@@ -360,6 +394,20 @@ def load_qa_model(model_name, weights_path):
     tokenizer = RobertaTokenizer.from_pretrained(model_name)
 
     return model, tokenizer
+
+
+def run_base(model_name, weights_path, example_text):
+    model, tokenizer = load_base_model(model_name, weights_path)
+    model.eval()
+
+    tokens = tokenizer(example_text, return_tensors="np", padding=True, truncation=True)
+    tokens = {k: mx.array(v) for k, v in tokens.items()}
+
+    outputs = model(**tokens)
+
+    print(f"""MLX Roberta: {outputs["last_hidden_state"]}\n\n""")
+    print(f"""MLX Pooled: {outputs["pooler_output"]}""")
+
 
 def run_qa(model_name, weights_path, question, passage):
     model, tokenizer = load_qa_model(model_name, weights_path)
@@ -384,6 +432,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "-r",
         "--roberta-model",
+        choices=[
+            "roberta-base",
+            "deepset/roberta-base-squad2",
+        ],
         type=str,
         default="deepset/roberta-base-squad2",
         help="The Huggingface name or the path of the Roberta model",
@@ -395,18 +447,6 @@ if __name__ == "__main__":
         default="weights/roberta-base-squad2.npz",
         help="The path of the stored MLX Roberta weights (npz file)."
     )
-    # To Do: Would be useful after adding more different downstream task models, i.e. roberta-base when added Pooler Layer
-    # parser.add_argument(
-    #     "-m",
-    #     "--model_type",
-    #     choices=[
-    #         "roberta-base",
-    #         "roberta-base-qa",
-    #     ],
-    #     type=str,
-    #     default="roberta-base-qa",
-    #     help="The type of task that Roberta is used for."
-    # )
     parser.add_argument(
         "-q",
         "--question",
@@ -415,13 +455,17 @@ if __name__ == "__main__":
         help="The question for the Roberta QA model to ansewr"
     )
     parser.add_argument(
-        "-p",
-        "--passage",
+        "-t",
+        "--text",
         type=str,
         default="Jim Henson was a nice puppet",
-        help="The passage for the Roberta QA model to read from and comprehend."
+        help="The text for running Roberta or the passage for the Roberta QA model to read from and comprehend."
     )
     args = parser.parse_args()
 
-    run_qa(args.roberta_model, args.saved_weights_path, args.question, args.passage)
+    if "base" in model_types[args.roberta_model]:
+        run_base(args.roberta_model, args.saved_weights_path, args.text)
+        
+    else:
+        run_qa(args.roberta_model, args.saved_weights_path, args.question, args.text)
 
