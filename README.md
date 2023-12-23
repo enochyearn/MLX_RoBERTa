@@ -43,10 +43,10 @@ print(f"Strat Index: {answer_start_index} End Index: {answer_end_index} Answer: 
 
 
 ## To Dos
-- Incorporate a Pooler Layer into the RobertaModel class.
-- Validate the current implementation against the 🤗 `transformers` implementation using Unit Tests.
-- Expand the codebase to include additional models from the RoBERTa family, each catering to different downstream tasks.
-- Extend the existing codebase with capabilities for both training and pre-training.
+- [x] Incorporate a Pooler Layer into the RobertaModel class.
+- [ ] Validate the current implementation against the 🤗 `transformers` implementation using Unit Tests.
+- [ ] Expand the codebase to include additional models from the RoBERTa family, each catering to different downstream tasks.
+- [ ] Extend the existing codebase with capabilities for both training and pre-training.
 
 ## Contact Information
 For any inquiries, please feel free to reach out via email at `enochyearncontact [at] gmail [dot] com`.
