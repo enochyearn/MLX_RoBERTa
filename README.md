@@ -1,4 +1,4 @@
-# RoBERTa: A Robustly Optimized BERT Pretraining 
+# RoBERTa: A Robustly Optimized BERT Pretraining in MLX
 
 An implementation of Roberta Question Answering using MLX. 
 
