@@ -170,5 +170,12 @@ poetry.toml
 # LSP config files
 pyrightconfig.json
 
+# Core ML artifacts
+*.mlpackage/
+*.mlmodel
+*.mlmodelc/
+*.mlarchive
+*.mil
+
 # Ignore the weights directory
 ./weights/*

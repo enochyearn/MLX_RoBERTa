@@ -42,6 +42,57 @@ print(f"Strat Index: {answer_start_index} End Index: {answer_end_index} Answer: 
 ```
 
 
+## Export to Core ML (`.mlpackage`)
+Use `export_roberta_qa_coreml.py` to export Hugging Face RoBERTa QA (`deepset/roberta-base-squad2`) into Core ML.
+
+The script:
+- Loads `AutoModelForQuestionAnswering` with eager attention.
+- Traces and freezes a TorchScript wrapper.
+- Converts to Core ML `mlprogram`.
+- Runs a PyTorch vs Core ML sanity check (`max|start_err|`, `max|end_err|`) on macOS.
+
+Fixed-length export:
+
+```bash
+python export_roberta_qa_coreml.py \
+  --model deepset/roberta-base-squad2 \
+  --max-len 384 \
+  --out RobertaQA_384.mlpackage \
+  --precision fp16
+```
+
+Flexible-length export (1..max_len):
+
+```bash
+python export_roberta_qa_coreml.py \
+  --model deepset/roberta-base-squad2 \
+  --max-len 512 \
+  --flexible \
+  --out RobertaQA_flex_512.mlpackage \
+  --precision fp16
+```
+
+Skip sanity check (faster smoke test):
+
+```bash
+python export_roberta_qa_coreml.py \
+  --model deepset/roberta-base-squad2 \
+  --max-len 128 \
+  --out RobertaQA_smoke.mlpackage \
+  --precision fp16 \
+  --skip-sanity-check
+```
+
+Useful flags:
+- `--precision {fp16,fp32}` (default: `fp16`)
+- `--skip-sanity-check`
+- `--max-len` must be `> 0`
+- `--out` must end with `.mlpackage`
+
+Core ML model I/O:
+- Inputs: `input_ids` (`int32`), `attention_mask` (`int32`)
+- Outputs: `start_logits`, `end_logits`
+
 ## To Dos
 - [x] Incorporate a Pooler Layer into the RobertaModel class.
 - [ ] Validate the current implementation against the 🤗 `transformers` implementation using Unit Tests.
